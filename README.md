@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚛 Waste Management Operational System (DLH API)
 
-## Getting Started
+Sistem Backend berbasis Next.js API Route yang mengintegrasikan AI dengan logika operasional lapangan untuk Dinas Lingkungan Hidup (DLH). Sistem ini melakukan prediksi volume sampah dan menghitung kebutuhan logistik secara real-time.
 
-First, run the development server:
+## 🚀 Fitur Utama
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+* **AI-Driven Prediction**: Mengintegrasikan model *Chronos-T5 Tiny* untuk estimasi volume sampah.
+* **Dynamic Operational Scaling**: Kalkulasi otomatis jumlah truk, personel, dan *man-hours* berdasarkan beban sampah yang masuk.
+* **Hybrid Logic System**:
+* **Mode AI**: Digunakan untuk lokasi yang terdaftar dalam dataset (Contoh: Jakarta Pusat).
+* **Mode Fallback**: Kalkulasi mandiri berbasis jumlah pengunjung untuk lokasi luar jangkauan (Contoh: JIS, GBK).
+
+
+* **Spatial Data Ready**: Integrasi koordinat (Lat/Lng) untuk pemetaan armada di dashboard.
+
+## 🛠️ Tech Stack
+
+* **Framework**: Next.js 14 (App Router)
+* **Language**: TypeScript
+* **AI Integration**: Hugging Face Inference API
+* **Deployment**: Vercel / Localhost
+
+## 📊 Parameter Kalkulasi (Standar DLH)
+
+Sistem menggunakan standar operasional berikut:
+
+* **Konversi Berat**: 1 m³ sampah ≈ 0.4 Ton.
+* **Kapasitas Armada**: 5 m³ per truk.
+* **Personel**: 3 orang per armada (1 Driver, 2 Crew).
+* **Shift Kerja**: 8 jam kerja/hari.
+
+## 🔌 API Endpoint
+
+### POST `/api/waste`
+
+Menerima input lokasi dan estimasi pengunjung untuk menghasilkan rencana operasional.
+
+**Contoh Request Body:**
+
+```json
+{
+  "locationName": "Stadion JIS",
+  "visitorEstimate": 80000
+}
+
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Contoh Response Output:**
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```json
+{
+    "status": "success",
+    "data": {
+        "location": "Stadion JIS",
+        "metrics": {
+            "total_volume": "60.0 m3",
+            "total_weight": "24.0 Ton",
+            "required_trucks": 12,
+            "required_staff": 36,
+            "total_man_hours": 288
+        },
+        "summary": "Analisis Operasional Stadion JIS: Estimasi sampah 24.0 Ton. Mobilisasi 12 unit truk dan 36 personel."
+    }
+}
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
 
-## Learn More
+## 📈 Alur Kerja Sistem
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Input**: Menerima nama lokasi dan estimasi massa dari Frontend.
+2. **AI Sync**: Menghubungi API AI untuk mendapatkan data historis keramaian.
+3. **Logika Dinamis**: Jika lokasi tidak ada di dataset AI, sistem beralih ke kalkulasi berbasis *visitor ratio* agar hasil tetap akurat.
+4. **Final Output**: Data dikirim ke Frontend untuk visualisasi peta dan tabel logistik.
