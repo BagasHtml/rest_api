@@ -1,5 +1,3 @@
-import { prisma } from "./prisma";
-
 class WastePredictionService {
   private static instance: WastePredictionService;
   private readonly apiUrl: string;
@@ -27,25 +25,7 @@ class WastePredictionService {
     });
 
     if (!response.ok) throw new Error(`AI API Error: ${response.statusText}`);
-    
-    const aiData = await response.json();
-    const area = await prisma.masterArea.findUnique({
-      where: { name: location }
-    });
-
-    if (area) {
-      await prisma.predictionLog.create({
-        data: {
-          areaId: area.id,
-          prediction_date: new Date(),
-          volume_ton: aiData.data?.prediction_results[0]?.total_volume_ton || 0,
-          confidence_score: aiData.confidence_score || 0,
-          risk_status: aiData.status || "NORMAL",
-        },
-      });
-    }
-
-    return aiData;
+    return response.json();
   }
 }
 
