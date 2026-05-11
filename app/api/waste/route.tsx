@@ -1,60 +1,67 @@
 import { NextResponse } from "next/server";
+import { wasteService } from "../../lib/waste-api";
+import { prisma } from "../../lib/prisma";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { locationName, visitorEstimate } = body;
+    const locationName = body.locationName || "JIS";
+    const visitorEstimate = Number(body.visitorEstimate) || 1000;
 
-    const hfResponse = await fetch("https://alamdieng-waste-prediction-api.hf.space/", {
-      method: "GET",
-      cache: 'no-store'
+    const aiData = await wasteService.predict(locationName, visitorEstimate);
+    const predictionResults = aiData.data?.prediction_results || [];
+
+    const enrichedResults = predictionResults.map((item: any) => {
+      const vol = item.total_volume_ton || 0;
+      const truckCount = item.rekomendasi_truk || Math.ceil(vol / 5);
+      return {
+        ...item,
+        calculated_staff: truckCount * 3,
+        man_hours: truckCount * 3 * 8,
+        weight_kg: vol * 1000,
+      };
     });
 
-    if (!hfResponse.ok) {
-      throw new Error("AI Service Unavailable");
+    if (enrichedResults.length > 0) {
+      await prisma.predictionLog.create({
+        data: {
+          area: {
+            connectOrCreate: {
+              where: { name: locationName },
+              create: {
+                name: locationName,
+                latitude: aiData.latitude || -6.124,
+                longitude: aiData.longitude || 106.821,
+              }
+            }
+          },
+          prediction_date: new Date(),
+          volume_ton: enrichedResults[0].total_volume_ton || 0,
+          confidence_score: aiData.confidence_score || 0,
+          risk_status: (enrichedResults[0].total_volume_ton || 0) > 10 ? "HIGH" : "NORMAL",
+          created_at: new Date()
+        }
+      });
     }
 
-    const aiData = await hfResponse.json();
-
-    const volume = aiData.events_loaded 
-      ? Number(aiData.events_loaded) * 2.5 
-      : (Number(visitorEstimate) / 1000) * 0.75 || 2.0;
-
-    const truckCapacity = aiData.truck_capacity || 5;
-    const staffPerTruck = aiData.workers_per_truck || 3;
-
-    const trucks = Math.ceil(volume / truckCapacity);
-    const staff = trucks * staffPerTruck;
-    const weight = volume * 0.4; 
-
     return NextResponse.json({
-      status: "success",
-      source: "AI Model Integration",
+      status: aiData.status,
+      message: aiData.message,
+      confidence_score: aiData.confidence_score,
       data: {
-        location: aiData.location_name || locationName || "Unmapped Location",
+        location: locationName,
         coordinates: {
-          lat: aiData.latitude || -6.200, 
-          lng: aiData.longitude || 106.816
+          lat: aiData.latitude || -6.124,
+          lng: aiData.longitude || 106.821,
         },
-        metrics: {
-          total_volume: `${volume.toFixed(1)} m3`,
-          total_weight: `${weight.toFixed(1)} Ton`,
-          required_trucks: trucks,
-          required_staff: staff,
-          total_man_hours: staff * 8
-        },
-        ai_metadata: {
-          model: aiData.model || "Chronos-T5",
-          last_update: new Date().toISOString()
-        },
-        summary: `Berdasarkan analisis AI pada lokasi ${aiData.location_name || locationName}, diestimasi timbulan sampah sebesar ${weight.toFixed(1)} Ton. Diperlukan mobilisasi ${trucks} unit armada dan ${staff} personel lapangan.`
-      }
+        prediction_results: enrichedResults,
+        logistics_plan: aiData.data?.logistics_plan || {},
+      },
     });
-
   } catch (error: any) {
-    return NextResponse.json({ 
-      status: "error", 
-      message: error.message 
-    }, { status: 500 });
+    return NextResponse.json(
+      { status: "error", message: error.message },
+      { status: 500 },
+    );
   }
 }
