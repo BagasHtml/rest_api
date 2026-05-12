@@ -50,11 +50,22 @@ export async function POST(req: Request) {
     const enrichedResults = predictionResults.map((item: any) => {
       const vol = item.total_volume_ton || 0;
       const truckCount = item.rekomendasi_truk || Math.ceil(vol / 5);
+      
       return {
-        ...item,
+        ds: item.ds,
+        trend: item.trend,
+        yhat: item.yhat,
+        yhat_lower: item.yhat_lower,
+        yhat_upper: item.yhat_upper,
+        lokasi: item.lokasi,
+        kategori: item.kategori,
+        total_volume_ton: vol,
+        sisa_makanan_ton: item.sisa_makanan_ton || 0,
+        plastik_ton: item.plastik_ton || 0,
         calculated_staff: truckCount * 3,
         man_hours: truckCount * 3 * 8,
         weight_kg: vol * 1000,
+        rekomendasi_truk: truckCount,
       };
     });
 
@@ -76,6 +87,9 @@ export async function POST(req: Request) {
           total_volume_ton: totalVolume,
           total_food_waste_ton: totalFoodWaste,
           total_plastic_ton: totalPlastic,
+          average_trend: predictionResults.length > 0 
+            ? predictionResults.reduce((acc: any, curr: any) => acc + (curr.trend || 0), 0) / predictionResults.length 
+            : 0
         },
         prediction_results: enrichedResults,
         logistics_plan: aiData.data?.logistics_plan || {},
