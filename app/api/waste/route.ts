@@ -4,13 +4,7 @@ import { NextResponse } from "next/server";
 import { wasteService } from "../../lib/waste-api";
 import { prisma } from "../../lib/prisma";
 
-const COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
-  "jis": { lat: -6.1214, lng: 106.8830 },
-  "gbk": { lat: -6.2185, lng: 106.8018 },
-  "ice bsd": { lat: -6.3006, lng: 106.6523 },
-  "jakarta pusat": { lat: -6.1753, lng: 106.8271 },
-  "jakarta selatan": { lat: -6.2615, lng: 106.8106 },
-};
+const DEFAULT_COORDINATES = { lat: -6.2088, lng: 106.8456 };
 
 export async function POST(req: Request) {
   try {
@@ -21,7 +15,12 @@ export async function POST(req: Request) {
     const normalizedLocation = typeof aiLocationName === 'string' ? aiLocationName.toLowerCase().trim() : "";
 
     const allAreas = await prisma.masterArea.findMany({
-      select: { id: true, name: true }
+      select: { 
+        id: true, 
+        name: true, 
+        latitude: true, 
+        longitude: true 
+      }
     });
 
     const areaData = allAreas.find(area => 
@@ -69,7 +68,9 @@ export async function POST(req: Request) {
       };
     });
 
-    const dynamicCoordinates = COORDINATES_MAP[normalizedLocation] || { lat: -6.2088, lng: 106.8456 };
+    const dynamicCoordinates = areaData?.latitude && areaData?.longitude 
+      ? { lat: Number(areaData.latitude), lng: Number(areaData.longitude) }
+      : DEFAULT_COORDINATES;
 
     return NextResponse.json({
       status: aiData.status || "success",
@@ -79,10 +80,7 @@ export async function POST(req: Request) {
       data: {
         location: aiLocationName,
         is_area_registered: !!areaData,
-        coordinates: {
-          lat: dynamicCoordinates.lat,
-          lng: dynamicCoordinates.lng,
-        },
+        coordinates: dynamicCoordinates,
         waste_summary: {
           total_volume_ton: totalVolume,
           total_food_waste_ton: totalFoodWaste,
