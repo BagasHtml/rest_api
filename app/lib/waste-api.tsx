@@ -13,18 +13,21 @@ class WastePredictionService {
     return WastePredictionService.instance;
   }
 
-  async predict(location: string, visitorCount: number) {
+  async predict(payload: Record<string, any>) {
     const response = await fetch(this.apiUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: location,
-        visitor_count: visitorCount,
-      }),
+      headers: { 
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
       cache: "no-store",
     });
 
-    if (!response.ok) throw new Error(`AI API Error: ${response.statusText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`AI API Error: ${response.status} - ${errorText}`);
+    }
+
     return response.json();
   }
 }
