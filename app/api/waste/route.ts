@@ -11,26 +11,27 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     
     const aiData = await wasteService.predict(body);
-    const aiLocationName = aiData.data?.prediction_results?.[0]?.lokasi || body.locationName;
-    const normalizedLocation = typeof aiLocationName === 'string' ? aiLocationName.toLowerCase().trim() : "";
+    
+    const aiLocationName = aiData.data?.prediction_results?.[0]?.lokasi || body.nama_lokasi || "Unknown";
+    const normalizedLocation = aiLocationName.toLowerCase().trim();
 
-    const allAreas = await prisma.masterArea.findMany({
+    const areaData = await prisma.masterArea.findFirst({
+      where: {
+        name: {
+          equals: normalizedLocation
+        }
+      },
       select: { 
         id: true, 
-        name: true, 
         latitude: true, 
         longitude: true 
       }
     });
 
-    const areaData = allAreas.find(area => 
-      typeof area.name === 'string' && area.name.toLowerCase().trim() === normalizedLocation
-    );
-
     const predictionResults = aiData.data?.prediction_results || [];
 
     const totalVolume = predictionResults.reduce((acc: number, item: any) => acc + (item.total_volume_ton || 0), 0);
-    const totalFoodWaste = predictionResults.reduce((acc: number, item: any) => acc + (item.sisa_makanan_ton || 0), 0);
+    const totalFoodWaste = predictionResults.reduce((acc: number, item: any) => acc + (item.sisa_makanan_organik_ton || 0), 0);
     const totalPlastic = predictionResults.reduce((acc: number, item: any) => acc + (item.plastik_ton || 0), 0);
 
     let dbLog = null;
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
           areaId: areaData.id,
           prediction_date: new Date(),
           volume_ton: totalVolume,
-          confidence_score: aiData.confidence_score ? parseFloat(aiData.confidence_score) : 0,
+          confidence_score: aiData.confidence_score ? parseFloat(aiData.confidence_score.replace('%', '')) : 0,
           risk_status: totalVolume > 10 ? "HIGH" : totalVolume > 5 ? "MEDIUM" : "LOW",
         },
       });
@@ -48,8 +49,10 @@ export async function POST(req: Request) {
 
     const enrichedResults = predictionResults.map((item: any) => {
       const vol = item.total_volume_ton || 0;
-      const truckCount = item.rekomendasi_truk || Math.ceil(vol / 5);
-      
+      const aiLogistics = item.rekomendasi_logistik_dan_ops || {};
+      const truckCount = aiLogistics.trucks_needed || Math.ceil(vol / 5);
+      const staffCount = aiLogistics.manpower || (truckCount * 3);
+
       return {
         ds: item.ds,
         trend: item.trend,
@@ -57,14 +60,19 @@ export async function POST(req: Request) {
         yhat_lower: item.yhat_lower,
         yhat_upper: item.yhat_upper,
         lokasi: item.lokasi,
-        kategori: item.kategori,
+        kategori_lokasi: item.kategori_lokasi,
         total_volume_ton: vol,
-        sisa_makanan_ton: item.sisa_makanan_ton || 0,
+        sisa_makanan_organik_ton: item.sisa_makanan_organik_ton || 0,
         plastik_ton: item.plastik_ton || 0,
-        calculated_staff: truckCount * 3,
-        man_hours: truckCount * 3 * 8,
         weight_kg: vol * 1000,
-        rekomendasi_truk: truckCount,
+        risk_score: item.risk_score || 0,
+        risk_status: item.risk_status || "SAFE",
+        logistics: {
+          rekomendasi_truk: truckCount,
+          calculated_staff: staffCount,
+          estimated_duration_hours: aiLogistics.estimated_duration_hours || (truckCount * 8),
+          man_hours: staffCount * (aiLogistics.estimated_duration_hours || 8)
+        }
       };
     });
 
@@ -86,11 +94,10 @@ export async function POST(req: Request) {
           total_food_waste_ton: totalFoodWaste,
           total_plastic_ton: totalPlastic,
           average_trend: predictionResults.length > 0 
-            ? predictionResults.reduce((acc: any, curr: any) => acc + (curr.trend || 0), 0) / predictionResults.length 
+            ? predictionResults.reduce((acc: number, curr: any) => acc + (curr.trend || 0), 0) / predictionResults.length 
             : 0
         },
         prediction_results: enrichedResults,
-        logistics_plan: aiData.data?.logistics_plan || {},
         database_log: dbLog, 
       },
     });
